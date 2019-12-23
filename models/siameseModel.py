@@ -1,5 +1,12 @@
 import torch, torchvision
 import torch.nn as nn
+from torchvision import transforms
+
+preprocess = transforms.Compose([
+    transforms.Resize(227),
+    transforms.ToTensor()
+])
+
 
 class SiameseModel(nn.Module):
     def __init__(self, backbond, backbond_output, feature_output):

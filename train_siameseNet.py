@@ -9,6 +9,7 @@ from torchvision.models.resnet import resnet18
 from torchvision.models.densenet import densenet121
 from torch.autograd import Variable
 from models.siameseModel import SiameseModel
+from models.siameseModel import preprocess as PreProcess_1
 
 supported_models=['alexnet', 'googlenet', 'resnet', 'densenet']
 
@@ -17,6 +18,7 @@ parser.add_argument('--model_name', dest='model_name', default='alexnet',help='[
 parser.add_argument('--data_path', dest='data_path', default=None)
 parser.add_argument('--train_file', dest='train_file',default=None)
 parser.add_argument('--val_file', dest='val_file',default=None)
+parser.add_argument('--processed_map', dest='processed_map', default=None)
 parser.add_argument('--epoch', dest='epoch',type=int,default=30)
 parser.add_argument('--shuffle', dest='shuffle',type=int,default=1)
 args = parser.parse_args()
@@ -26,6 +28,7 @@ data_path = args.data_path
 train_file = args.train_file
 val_file = args.val_file
 epoch = args.epoch
+processed_map = args.processed_map
 needShuffle = False
 
 if model_name is None or model_name not in supported_models:
@@ -55,22 +58,35 @@ if not os.path.isfile(train_file):
     print('%s is not found'%train_file)
     exit(-1)
 
-training_set = CrossedLabelDataset(label_file=train_file, root_dir=data_path)
+train_processed_map = None
+val_processed_map = None
+
+if processed_map is not None:
+    train_processed_map = '%s_train'%processed_map
+if processed_map is not None:
+    val_processed_map = '%s_val'%processed_map
+
+training_set = CrossedLabelDataset(label_file=train_file, root_dir=data_path, processed_path=train_processed_map, transform=PreProcess_1)
 print('training set has been loaded.')
+#if processed_map is not None and training_set.saveMap(train_processed_map):
+    #print ('training map has been saved.')
+
 val_set = None
 if val_file is not None and os.path.isfile(val_file):
-    val_set = CrossedLabelDataset(label_file=val_file, root_dir=data_path)
+    val_set = CrossedLabelDataset(label_file=val_file, root_dir=data_path, processed_path=val_processed_map, transform=PreProcess_1)
     print('validation set has been loaded.')
+    #if processed_map is not None and val_set.saveMap(val_processed_map):
+        #print('validation map has been saved.')
 
 nn_backbond = None
 if model_name=='alexnet':
-    nn_backbond = alexnet().feature.cuda()
+    nn_backbond = alexnet().features.cuda()
 elif model_name=='resnet':
-    nn_backbond = resnet18().feature.cuda()
+    nn_backbond = resnet18().features.cuda()
 elif model_name=='googlenet':
-    nn_backbond = googlenet().feature.cuda()
+    nn_backbond = googlenet().features.cuda()
 elif model_name=='densenet':
-    nn_backbond = densenet121().feature.cuda()
+    nn_backbond = densenet121().features.cuda()
 else:
     pass
 
@@ -87,20 +103,22 @@ training_set.printMe()
 
 for iepoch in range(epoch):
     train_loader_iter = iter(train_dl)
-    print('training %d epoch'%iepoch)
+    print('training %d epoch'%(iepoch+1))
     epoch_loss = 0
     for batch_idx, (ims, true_ims, false_ims) in enumerate(train_loader_iter):
         nn_model.zero_grad()
         ims, true_ims, false_ims=Variable(ims.float().cuda()), Variable(true_ims.float().cuda()), Variable(false_ims.float().cuda())
-        
-        output1 = nn_model.feature(ims)
-        output2 = nn_model.feature(true_ims)
-        output3 = nn_model.feature(false_ims)
+
+        output1 = nn_model(ims)
+        output2 = nn_model(true_ims)
+        output3 = nn_model(false_ims)
         output = loss_function(output1, output3, output2)
         output.backward()
         optimizer.step()
         epoch_loss = loss_function.item()
         print('loss:%f'%epoch_loss)
+
+    training_set.shufflePairs()
 
 
 print('Done')
