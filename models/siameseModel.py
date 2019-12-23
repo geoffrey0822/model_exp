@@ -17,9 +17,11 @@ class SiameseModel(nn.Module):
         self.fc = nn.Sequential(nn.Linear(self.backbond_output,feature_output), nn.Sigmoid())
 
     def forward(self, x1):
+        #print(x1.shape)
         output = self.backbond(x1)
+        #print(output.shape)
         output = output.view(output.size()[0], -1)
-
+        #print(output.shape)
         output = self.fc(output)
 
         return output

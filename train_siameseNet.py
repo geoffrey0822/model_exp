@@ -13,6 +13,8 @@ from models.siameseModel import preprocess as PreProcess_1
 
 supported_models=['alexnet', 'googlenet', 'resnet', 'densenet']
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 parser = argparse.ArgumentParser(description='Trainer for siamese')
 parser.add_argument('--model_name', dest='model_name', default='alexnet',help='[alex,googlenet,resnet,densenet')
 parser.add_argument('--data_path', dest='data_path', default=None)
@@ -80,7 +82,7 @@ if val_file is not None and os.path.isfile(val_file):
 
 nn_backbond = None
 if model_name=='alexnet':
-    nn_backbond = alexnet().features.cuda()
+    nn_backbond = alexnet(pretrained=True).features.cuda()
 elif model_name=='resnet':
     nn_backbond = resnet18().features.cuda()
 elif model_name=='googlenet':
@@ -91,10 +93,14 @@ else:
     pass
 
 print('%s has been loaded.'%nn_backbond.__class__.__name__)
-nn_model = SiameseModel(nn_backbond, 4*4*256, 3072)
+nn_model = SiameseModel(nn_backbond, 6*6*256, 3072)
+nn_model.to(device)
+nn_model.eval()
 print('%s has been loaded.'%nn_model.__class__.__name__)
-train_dl = torch.utils.data.DataLoader(training_set, batch_size=16, shuffle=True)
-val_dl = torch.utils.data.DataLoader(val_set, batch_size=16, shuffle=True)
+train_dl = torch.utils.data.DataLoader(training_set, batch_size=64, shuffle=True)
+val_dl = torch.utils.data.DataLoader(val_set, batch_size=64, shuffle=True)
+
+n_train = len(train_dl)
 
 loss_function = torch.nn.TripletMarginLoss()
 optimizer = optim.SGD(nn_model.parameters(), lr=0.001)
@@ -107,18 +113,18 @@ for iepoch in range(epoch):
     epoch_loss = 0
     for batch_idx, (ims, true_ims, false_ims) in enumerate(train_loader_iter):
         nn_model.zero_grad()
-        ims, true_ims, false_ims=Variable(ims.float().cuda()), Variable(true_ims.float().cuda()), Variable(false_ims.float().cuda())
+        ims_i, true_ims_i, false_ims_i=Variable(ims.float().cuda()), Variable(true_ims.float().cuda()), Variable(false_ims.float().cuda())
 
-        output1 = nn_model(ims)
-        output2 = nn_model(true_ims)
-        output3 = nn_model(false_ims)
+        output1 = nn_model(ims_i)
+        output2 = nn_model(true_ims_i)
+        output3 = nn_model(false_ims_i)
         output = loss_function(output1, output3, output2)
         output.backward()
         optimizer.step()
-        epoch_loss = loss_function.item()
-        print('loss:%f'%epoch_loss)
+        epoch_loss = (epoch_loss + output)/2.0
+        print('\rloss:%f [batch:%d/%d]'%(epoch_loss,batch_idx+1,n_train), end='')
 
     training_set.shufflePairs()
-
+    print('')
 
 print('Done')
